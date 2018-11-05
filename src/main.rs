@@ -1,8 +1,16 @@
+extern crate ckb_core as core;
+extern crate ckb_protocol as protocol;
 extern crate ckb_vm as vm;
+extern crate flatbuffers;
+extern crate serde_json;
+
+mod convert;
+mod syscalls;
 
 use std::env;
 use std::fs::File;
 use std::io::Read;
+use syscalls::MmapSyscalls;
 use vm::{DefaultMachine, SparseMemory};
 
 fn main() {
@@ -13,6 +21,8 @@ fn main() {
     file.read_to_end(&mut buffer).unwrap();
     let args2: Vec<Vec<u8>> = args.iter().map(|a| a.clone().into_bytes()).collect();
 
-    let result = DefaultMachine::<u64, SparseMemory>::default().run(&buffer, &args2);
+    let mut machine = DefaultMachine::<u64, SparseMemory>::default();
+    machine.add_syscall_module(Box::new(MmapSyscalls::new("data".to_string())));
+    let result = machine.run(&buffer, &args2);
     println!("Result: {:?}", result);
 }
