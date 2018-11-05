@@ -13,6 +13,7 @@ pub const OVERRIDE_LEN: u8 = 1;
 
 pub const MMAP_TX_SYSCALL_NUMBER: u64 = 2049;
 pub const MMAP_CELL_SYSCALL_NUMBER: u64 = 2050;
+pub const DEBUG_PRINT_SYSCALL_NUMBER: u64 = 2051;
 
 #[derive(Debug, PartialEq, Clone, Copy, Eq)]
 pub enum Mode {
@@ -173,5 +174,35 @@ impl<R: Register, M: Memory> Syscalls<R, M> for MmapSyscalls {
             _ => false,
         };
         Ok(processed)
+    }
+}
+
+pub struct DebugSyscalls {}
+
+impl<R: Register, M: Memory> Syscalls<R, M> for DebugSyscalls {
+    fn initialize(&mut self, _machine: &mut CoreMachine<R, M>) -> Result<(), VMError> {
+        Ok(())
+    }
+
+    fn ecall(&mut self, machine: &mut CoreMachine<R, M>) -> Result<bool, VMError> {
+        let number = machine.registers()[A7].to_u64();
+        if number != DEBUG_PRINT_SYSCALL_NUMBER {
+            return Ok(false);
+        }
+
+        let mut addr = machine.registers()[A0].to_usize();
+        let mut buffer = Vec::new();
+
+        loop {
+            let byte = machine.memory_mut().load8(addr)?;
+            if byte == 0 {
+                break;
+            }
+            buffer.push(byte);
+            addr += 1;
+        }
+
+        println!("DEBUG: {}", String::from_utf8(buffer).unwrap());
+        Ok(true)
     }
 }

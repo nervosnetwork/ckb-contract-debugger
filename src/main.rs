@@ -12,7 +12,7 @@ use cost_model::instruction_cycle_costs;
 use std::env;
 use std::fs::File;
 use std::io::Read;
-use syscalls::MmapSyscalls;
+use syscalls::{DebugSyscalls, MmapSyscalls};
 use vm::{CoreMachine, DefaultMachine, SparseMemory};
 
 fn main() {
@@ -25,6 +25,7 @@ fn main() {
 
     let mut machine = DefaultMachine::<u64, SparseMemory>::new(Box::new(instruction_cycle_costs));
     machine.add_syscall_module(Box::new(MmapSyscalls::new("data".to_string())));
+    machine.add_syscall_module(Box::new(DebugSyscalls{}));
     let result = machine.run(&buffer, &args2);
     println!("Result: {:?}", result);
     println!("Cycles: {:?}", CoreMachine::cycles(&machine));
