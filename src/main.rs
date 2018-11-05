@@ -5,13 +5,15 @@ extern crate flatbuffers;
 extern crate serde_json;
 
 mod convert;
+mod cost_model;
 mod syscalls;
 
+use cost_model::instruction_cycle_costs;
 use std::env;
 use std::fs::File;
 use std::io::Read;
 use syscalls::MmapSyscalls;
-use vm::{DefaultMachine, SparseMemory};
+use vm::{CoreMachine, DefaultMachine, SparseMemory};
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -21,8 +23,9 @@ fn main() {
     file.read_to_end(&mut buffer).unwrap();
     let args2: Vec<Vec<u8>> = args.iter().map(|a| a.clone().into_bytes()).collect();
 
-    let mut machine = DefaultMachine::<u64, SparseMemory>::default();
+    let mut machine = DefaultMachine::<u64, SparseMemory>::new(Box::new(instruction_cycle_costs));
     machine.add_syscall_module(Box::new(MmapSyscalls::new("data".to_string())));
     let result = machine.run(&buffer, &args2);
     println!("Result: {:?}", result);
+    println!("Cycles: {:?}", CoreMachine::cycles(&machine));
 }
