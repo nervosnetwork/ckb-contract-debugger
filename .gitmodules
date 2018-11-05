@@ -1,0 +1,6 @@
+[submodule "vm"]
+	path = vm
+	url = https://github.com/NervosFoundation/ckb-vm
+[submodule "ckb"]
+	path = ckb
+	url = https://github.com/NervosFoundation/ckb
