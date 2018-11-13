@@ -1,8 +1,9 @@
-use core::transaction::{CellOutput, Transaction};
+use core::script::Script;
+use core::transaction::{CellInput, CellOutput, Transaction};
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use protocol::{
-    Bytes as FbsBytes, CellInput as FbsCellInput, CellOutput as FbsCellOutput, CellOutputBuilder,
-    OutPoint as FbsOutPoint, Transaction as FbsTransaction, TransactionBuilder,
+    Bytes as FbsBytes, CellInput as FbsCellInput, CellInputBuilder, CellOutput as FbsCellOutput,
+    CellOutputBuilder, OutPoint as FbsOutPoint, Transaction as FbsTransaction, TransactionBuilder,
 };
 use serde_json::from_slice;
 
@@ -20,7 +21,7 @@ pub fn build_tx<'b>(
     let vec = tx
         .inputs()
         .iter()
-        .map(|cell_input| FbsCellInput::build(fbb, cell_input))
+        .map(|cell_input| build_input(fbb, cell_input))
         .collect::<Vec<_>>();
     let inputs = fbb.create_vector(&vec);
 
@@ -50,8 +51,19 @@ fn build_output<'b>(
     builder.finish()
 }
 
+fn build_input<'b>(
+    fbb: &mut FlatBufferBuilder<'b>,
+    input: &CellInput,
+) -> WIPOffset<FbsCellInput<'b>> {
+    let hash = FbsBytes::build(fbb, &input.previous_output.hash);
+    let mut builder = CellInputBuilder::new(fbb);
+    builder.add_hash(hash);
+    builder.add_index(input.previous_output.index);
+    builder.finish()
+}
+
 // Convert JSON based tx data into flatbuffer based data
-pub fn convert(json_bytes: &[u8]) -> Vec<u8> {
+pub fn convert_tx(json_bytes: &[u8]) -> Vec<u8> {
     let t: Transaction = from_slice(json_bytes).unwrap();
 
     let mut tx_builder = FlatBufferBuilder::new();
@@ -59,4 +71,9 @@ pub fn convert(json_bytes: &[u8]) -> Vec<u8> {
     tx_builder.finish(tx_offset, None);
 
     tx_builder.finished_data().to_vec()
+}
+
+// Convert JSON based script data into script object
+pub fn parse_script(json_bytes: &[u8]) -> Script {
+    from_slice(json_bytes).unwrap()
 }

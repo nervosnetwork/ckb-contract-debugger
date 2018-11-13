@@ -1,19 +1,21 @@
 // Adapted from https://github.com/NervosFoundation/ckb/tree/develop/script/src/syscalls
-use convert::convert;
+use convert::{convert_tx, parse_script};
 use std::cmp;
 use std::fmt;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Result as IOResult};
 use std::rc::Rc;
 use vm::memory::PROT_READ;
 use vm::{CoreMachine, Error as VMError, Memory, Register, Syscalls, A0, A1, A2, A3, A4, A5, A7};
 
 pub const SUCCESS: u8 = 0;
 pub const OVERRIDE_LEN: u8 = 1;
+pub const ITEM_MISSING: u8 = 2;
 
 pub const MMAP_TX_SYSCALL_NUMBER: u64 = 2049;
 pub const MMAP_CELL_SYSCALL_NUMBER: u64 = 2050;
-pub const DEBUG_PRINT_SYSCALL_NUMBER: u64 = 2051;
+pub const FETCH_SCRIPT_HASH_SYSCALL_NUMBER: u64 = 2051;
+pub const DEBUG_PRINT_SYSCALL_NUMBER: u64 = 2177;
 
 #[derive(Debug, PartialEq, Clone, Copy, Eq)]
 pub enum Mode {
@@ -28,6 +30,32 @@ impl Mode {
             1 => Ok(Mode::PARTIAL),
             _ => Err(VMError::ParseError),
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy, Eq)]
+pub enum Category {
+    LOCK,
+    CONTRACT,
+}
+
+impl Category {
+    pub fn parse_from_u64(i: u64) -> Result<Category, VMError> {
+        match i {
+            0 => Ok(Category::LOCK),
+            1 => Ok(Category::CONTRACT),
+            _ => Err(VMError::ParseError),
+        }
+    }
+}
+
+impl fmt::Display for Category {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            Category::LOCK => "lock",
+            Category::CONTRACT => "contract",
+        };
+        write!(f, "{}", s)
     }
 }
 
@@ -57,6 +85,13 @@ impl fmt::Display for Source {
     }
 }
 
+fn read_file(path: &str) -> IOResult<Vec<u8>> {
+    let mut data = Vec::new();
+    let mut file = File::open(path)?;
+    file.read_to_end(&mut data)?;
+    Ok(data)
+}
+
 pub struct MmapSyscalls {
     path: String,
 }
@@ -73,7 +108,7 @@ impl MmapSyscalls {
         let mut buffer = Vec::new();
         let mut file = File::open(format!("{}/tx.json", self.path))?;
         file.read_to_end(&mut buffer)?;
-        let data = convert(&buffer);
+        let data = convert_tx(&buffer);
 
         let addr = machine.registers()[A0].to_usize();
         let size_addr = machine.registers()[A1].to_usize();
@@ -122,7 +157,7 @@ impl MmapSyscalls {
         let size = machine.memory_mut().load64(size_addr)? as usize;
 
         let mut data = Vec::new();
-        let mut file = File::open(format!("{}/{}/{}.bin", self.path, source, index))?;
+        let mut file = File::open(format!("{}/cells/{}/{}.bin", self.path, source, index))?;
         file.read_to_end(&mut data)?;
 
         let (size, offset) = match mode {
@@ -153,6 +188,40 @@ impl MmapSyscalls {
         )?;
         Ok(())
     }
+
+    fn fetch_script_hash<R: Register, M: Memory>(
+        &mut self,
+        machine: &mut CoreMachine<R, M>,
+    ) -> Result<(), VMError> {
+        let addr = machine.registers()[A0].to_usize();
+        let size_addr = machine.registers()[A1].to_usize();
+        let size = machine.memory_mut().load64(size_addr)? as usize;
+
+        let index = machine.registers()[A2].to_usize();
+        let source = Source::parse_from_u64(machine.registers()[A3].to_u64())?;
+        let category = Category::parse_from_u64(machine.registers()[A4].to_u64())?;
+
+        match read_file(&format!(
+            "{}/scripts/{}/{}/{}.bin",
+            self.path, source, index, category
+        )) {
+            Ok(data) => {
+                let s = parse_script(&data);
+                let hash = &s.type_hash();
+                machine.memory_mut().store64(size_addr, hash.len() as u64)?;
+                if size >= hash.len() {
+                    machine.memory_mut().store_bytes(addr, hash)?;
+                    machine.registers_mut()[A0] = R::from_u8(SUCCESS);
+                } else {
+                    machine.registers_mut()[A0] = R::from_u8(OVERRIDE_LEN);
+                }
+            }
+            _ => {
+                machine.registers_mut()[A0] = R::from_u8(ITEM_MISSING);
+            }
+        }
+        Ok(())
+    }
 }
 
 impl<R: Register, M: Memory> Syscalls<R, M> for MmapSyscalls {
@@ -169,6 +238,10 @@ impl<R: Register, M: Memory> Syscalls<R, M> for MmapSyscalls {
             }
             MMAP_TX_SYSCALL_NUMBER => {
                 self.mmap_tx(machine)?;
+                true
+            }
+            FETCH_SCRIPT_HASH_SYSCALL_NUMBER => {
+                self.fetch_script_hash(machine)?;
                 true
             }
             _ => false,

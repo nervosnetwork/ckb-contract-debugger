@@ -7,7 +7,7 @@ extern crate serde_json;
 mod convert;
 
 use clap::{App, Arg};
-use convert::convert;
+use convert::convert_tx;
 use core::transaction::Transaction;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -48,7 +48,7 @@ fn main() {
         return;
     }
 
-    let bytes = convert(&buffer);
+    let bytes = convert_tx(&buffer);
     match matches.value_of("output") {
         Some(filename) => {
             let mut file = File::create(filename).unwrap();

@@ -25,22 +25,24 @@ fn main() {
 
     let mut machine = DefaultMachine::<u64, SparseMemory>::new(Box::new(instruction_cycle_costs));
     machine.add_syscall_module(Box::new(MmapSyscalls::new("data".to_string())));
-    machine.add_syscall_module(Box::new(DebugSyscalls{}));
+    machine.add_syscall_module(Box::new(DebugSyscalls {}));
     let result = machine.run(&buffer, &args2);
     println!("Result: {:?}", result);
     println!("Cycles: {:?}", CoreMachine::cycles(&machine));
 }
 
 fn normalize_arguments(args: Vec<String>) -> Vec<Vec<u8>> {
-    args.into_iter().enumerate().map(|(i, arg)| {
-        if i != 0 && arg.starts_with("@") {
-            let filename = &arg[1..];
-            let mut buffer = Vec::new();
-            let mut file = File::open(filename).unwrap();
-            file.read_to_end(&mut buffer).unwrap();
-            buffer
-        } else {
-            arg.into_bytes()
-        }
-    }).collect()
+    args.into_iter()
+        .enumerate()
+        .map(|(i, arg)| {
+            if i != 0 && arg.starts_with("@") {
+                let filename = &arg[1..];
+                let mut buffer = Vec::new();
+                let mut file = File::open(filename).unwrap();
+                file.read_to_end(&mut buffer).unwrap();
+                buffer
+            } else {
+                arg.into_bytes()
+            }
+        }).collect()
 }
